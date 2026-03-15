@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Portfolio Interaction Prototype</title>
+  <style>
+    :root{
+      --bg:#ffffff;
+      --text:#2d2d2d;
+      --muted:#8e8e8e;
+      --line:#dddddd;
+      --panel-shadow:-2px 2px 0 #d9d9d9;
+      --card-shadow:-12px 14px 28px rgba(0,0,0,0.12), 0 6px 16px rgba(0,0,0,0.06);
+      --circle-shadow:0 10px 24px rgba(0,0,0,0.12);
+      --placeholder:#ececec;
+      --arrow:#bcbcbc;
+      --scroll:rgba(185,185,185,0.8);
+      --ease:cubic-bezier(0.22,1,0.36,1);
+    }
+    *{box-sizing:border-box}
+    html,body{
+      width:100%;height:100%;margin:0;
+      overflow:hidden;background:var(--bg);color:var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    body{user-select:none}
+    .app{width:100%;height:100%;position:relative;overflow:hidden;background:#fff}
+
+    #landingScreen {
+      position: absolute; inset: 0; z-index: 2000;
+      background: #fff; display: flex; align-items: center; justify-content: center;
+      font-size: 16px; font-weight: 500; letter-spacing: -0.01em;
+      transition: opacity 0.6s ease;
+    }
+    #whiteOverlay {
+      position: absolute; inset: 0; z-index: 50;
+      background: rgba(255, 255, 255, 0.7); 
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.8s ease;
+    }
+
+    .top-controls{
+      position:absolute;inset:0;z-index:999;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;
+      gap:24px; opacity:0; pointer-events:none;
+      transition:all .7s var(--ease), opacity .6s ease;
+    }
+    .top-controls.visible{ opacity:1; pointer-events:auto; }
+    
+    .top-controls.compact{
+      top:0;bottom:auto;justify-content:flex-start;
+      padding-top:14px;gap:8px;
+    }
+    .top-controls.compact .pickers{gap:10px}
+    
+    .top-controls.compact .picker{
+      width:120px; height:42px; 
+    }
+    .top-controls.compact .picker::before,
+    .top-controls.compact .picker::after,
+    .top-controls.compact .picker-center-line {
+      display: none; 
+    }
+    .top-controls.compact .picker-label{font-size:9px}
+    .top-controls.compact .apply-btn{display:none;}
+
+    .pickers{display:flex;gap:18px;align-items:flex-start}
+    .picker-block{display:flex;flex-direction:column;gap:10px;align-items:center; transition: opacity 0.4s ease;}
+    .picker-label{
+      font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#7c7c7c;
+      transition:font-size .4s ease;
+    }
+    .picker{
+      width:180px;height:214px;border:1px solid var(--line);
+      /* 1. 피커 그라데이션 업데이트 */
+      background:linear-gradient(180deg, #bababa 0%, #ffffff 13%, #fafafa 50%, #dbdbdb 82%, #bababa 100%);
+      position:relative;overflow:hidden;
+      transition:width .4s var(--ease), height .4s var(--ease);
+    }
+    .picker::before,.picker::after{
+      content:"";position:absolute;left:0;width:100%;height:46px;
+      pointer-events:none;z-index:3;
+    }
+    .picker::before{top:0;background:linear-gradient(to bottom, rgba(255,255,255,.96), rgba(255,255,255,0))}
+    .picker::after{bottom:0;background:linear-gradient(to top, rgba(255,255,255,.96), rgba(255,255,255,0))}
+    .picker-center-line{
+      position:absolute;left:12px;right:12px;top:50%;height:40px;transform:translateY(-50%);
+      border-top:1px solid #ededed;border-bottom:1px solid #ededed;
+      z-index:2;pointer-events:none;
+    }
+    .picker-track{position:absolute;inset:0;cursor:ns-resize;z-index:4}
+    .picker-item{
+      position:absolute;left:0;width:100%;text-align:center;
+      font-size:15px;line-height:1;
+      transition:transform .3s ease, opacity .3s ease, filter .3s ease;
+      white-space:nowrap;pointer-events:none;
+    }
+
+    .apply-btn{
+      min-width:118px;height:42px;border:1px solid #d4d4d4;background:#fff;
+      box-shadow:var(--panel-shadow);
+      display:inline-flex;align-items:center;justify-content:center;
+      padding:0 18px;font-size:13px;letter-spacing:.08em;text-transform:uppercase;
+      color:#3a3a3a;cursor:pointer;
+      transition:transform .1s ease, box-shadow .1s ease, opacity .3s ease;
+    }
+    .apply-btn:hover{background:#fafafa}
+    .apply-btn:active{transform:translate(1px,1px);box-shadow:none}
+
+    .deck-stage{
+      position:absolute;inset:0;overflow:hidden;background:#fff;
+      opacity:0;pointer-events:none;
+      transition:opacity .5s ease;
+      cursor: zoom-out;
+    }
+    .deck-stage.active{opacity:1;pointer-events:auto;}
+
+    .anim-canvas{position:absolute;inset:0;pointer-events:none;z-index:15; transform-origin: 50% 50%;}
+    .anim-card{
+      position:absolute;width:100px;height:75px;background:#fff;
+      border:1px solid #f0f0f0;
+      box-shadow:3px -2px 8px rgba(0,0,0,0.06), 0 2px 5px rgba(0,0,0,0.03);
+      opacity:0; transition:none; will-change:transform,opacity,left,top;
+      margin-left:-50px; margin-top:-37.5px;
+    }
+
+    .deck{
+      position:absolute;left:50%;top:56%;
+      width:min(640px, 70vw); height:calc(min(640px, 70vw) * 0.75);
+      max-height:72vh;
+      transform:translate(-50%,-50%);
+      overflow:visible;z-index:20;
+      opacity:0;
+      cursor: default; 
+    }
+    .deck.visible{opacity:1}
+
+    .card{
+      position:absolute;width:100%;height:100%;
+      background:#fff;box-shadow:var(--card-shadow);
+      overflow:hidden;will-change:transform,opacity,filter;
+      transition:transform 1.0s var(--ease), opacity .6s ease;
+    }
+
+    .card-content{
+      width:100%;height:100%;
+      overflow-y:auto;overflow-x:hidden;
+      padding:34px;
+      scrollbar-width:thin;
+      scrollbar-color:transparent transparent;
+      position:relative;
+    }
+    .card-content::-webkit-scrollbar{width:8px}
+    .card-content::-webkit-scrollbar-track{background:transparent}
+    .card-content::-webkit-scrollbar-thumb{background:rgba(185,185,185,0);border-radius:4px}
+    .card-content.show-scrollbar{scrollbar-color:var(--scroll) transparent}
+    .card-content.show-scrollbar::-webkit-scrollbar-thumb{background:var(--scroll)}
+
+    .card-inner{display:flex;flex-direction:column;gap:22px}
+    .card-meta{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding-bottom:8px}
+    .card-title{font-size:18px;font-weight:500;letter-spacing:-0.01em}
+    .card-sub{font-size:12px;color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+    .placeholder{width:100%;aspect-ratio:16/9;background:var(--placeholder);flex:0 0 auto}
+
+    .circle-btn{
+      position:absolute;top:54%;width:52px;height:52px;border-radius:999px;border:none;background:#fff;
+      box-shadow:var(--circle-shadow);
+      display:flex;align-items:center;justify-content:center;
+      cursor:pointer;z-index:40;
+      transition:transform .12s ease, box-shadow .12s ease, opacity .3s ease;
+    }
+    .circle-btn svg{
+      width:16px;height:16px;stroke:var(--arrow);stroke-width:2.2;fill:none;
+      stroke-linecap:round;stroke-linejoin:round;
+    }
+    .circle-left{
+      left:max(24px, calc(50% - min(580px, 68vw)/2 - 76px));
+      transform:translateY(-50%);
+    }
+    .circle-right{
+      right:max(24px, calc(50% - min(580px, 68vw)/2 - 76px));
+      transform:translateY(-50%);
+    }
+    .circle-btn.hidden{opacity:0;pointer-events:none}
+    .circle-btn:hover{box-shadow:0 12px 28px rgba(0,0,0,0.15)}
+
+    .hint{
+      position:absolute;left:50%;bottom:18px;transform:translateX(-50%);
+      font-size:11px;color:#a5a5a5;letter-spacing:.05em;text-transform:uppercase;
+      z-index:10;opacity:0;transition:opacity .4s ease;
+    }
+    .hint.visible{opacity:1}
+    .card-counter{
+      position:absolute;left:50%;bottom:40px;transform:translateX(-50%);
+      font-size:12px;color:#b0b0b0;letter-spacing:.06em;z-index:10;
+      opacity:0;transition:opacity .4s ease;
+    }
+    .card-counter.visible{opacity:1}
+
+    @media (max-width:1200px){
+      .picker{width:160px}
+      .top-controls.compact .picker{width:110px;height:42px}
+      .circle-left{left:16px}
+      .circle-right{right:16px}
+    }
+    @media (max-width:760px){
+      .pickers{flex-direction:column;align-items:center}
+      .picker{width:220px}
+      .top-controls.compact .picker{width:140px;height:42px}
+      .deck{width:86vw;height:calc(86vw * 0.75)}
+      .card-content{padding:20px}
+      .circle-btn{width:44px;height:44px}
+    }
+    @media (prefers-reduced-motion: reduce){
+      *{transition:none !important;animation:none !important;scroll-behavior:auto !important}
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div id="landingScreen">Soomin Kim – Design Portfolio Archive</div>
+    <div id="whiteOverlay"></div>
+    
+    <div class="anim-canvas" id="animCanvas"></div>
+
+    <div class="top-controls" id="topControls">
+      <div class="pickers">
+        <div class="picker-block">
+          <div class="picker-label">Category</div>
+          <div class="picker" id="pickerCategory">
+            <div class="picker-center-line"></div>
+            <div class="picker-track"></div>
+          </div>
+        </div>
+        <div class="picker-block">
+          <div class="picker-label">Product</div>
+          <div class="picker" id="pickerProduct">
+            <div class="picker-center-line"></div>
+            <div class="picker-track"></div>
+          </div>
+        </div>
+        <div class="picker-block">
+          <div class="picker-label">View Mode</div>
+          <div class="picker" id="pickerViewMode">
+            <div class="picker-center-line"></div>
+            <div class="picker-track"></div>
+          </div>
+        </div>
+      </div>
+      <button class="apply-btn" id="applyBtn">Apply</button>
+    </div>
+
+    <div class="deck-stage" id="deckStage">
+      <button class="circle-btn circle-left hidden" id="prevBtn" aria-label="Previous">
+        <svg viewBox="0 0 16 16"><path d="M10 3 L5 8 L10 13" /></svg>
+      </button>
+      <div class="deck" id="deck"></div>
+      <button class="circle-btn circle-right hidden" id="nextBtn" aria-label="Next">
+        <svg viewBox="0 0 16 16"><path d="M6 3 L11 8 L6 13" /></svg>
+      </button>
+
+      <div class="card-counter" id="cardCounter"></div>
+      <div class="hint" id="hint">Scroll inside card · keep scrolling for next</div>
+    </div>
+  </div>
+
+  <script>
+    const config = {
+      categories: ["UX/UI","Industrial","Graphic","AI","Objet"],
+      products:   ["Device","Robot","Furniture","Package","App/Web"],
+      viewModes:  ["Lite","Standard","Deep"],
+    };
+
+    const pNames = [
+      "Mobility Cockpit UX","Mancala Interaction","Service Robot Form Study",
+      "Furniture Interaction System","AI Device Experience","Graphic Package Narrative",
+      "Web-Based Control Interface","Autonomous Robot Surface Language",
+      "Smart Home Dashboard","Wearable Health Monitor","Urban Mobility Hub",
+      "Retail Kiosk Interaction","AR Navigation Prototype"
+    ];
+    const projects = Array.from({length:100},(_,i)=>({
+      id:i,
+      title: pNames[i%pNames.length]+" "+String(i+1).padStart(2,"0"),
+      category:[config.categories[i%config.categories.length]],
+      product:[config.products[i%config.products.length]],
+      pages:Array.from({length:3+(i%5)},(_,j)=>"p"+(j+1))
+    }));
+
+    const visibleCount = 6;
+    const state = {
+      category:0, product:0, viewMode:1,
+      filteredProjects:[], currentIndex:0,
+      animating:false, autoScrollCooldown:false,
+      initialized:false, entering:false,
+    };
+
+    const topControls = document.getElementById("topControls");
+    const deckStage   = document.getElementById("deckStage");
+    const animCanvas  = document.getElementById("animCanvas");
+    const deck        = document.getElementById("deck");
+    const prevBtn     = document.getElementById("prevBtn");
+    const nextBtn     = document.getElementById("nextBtn");
+    const applyBtn    = document.getElementById("applyBtn");
+    const hintEl      = document.getElementById("hint");
+    const counterEl   = document.getElementById("cardCounter");
+
+    let animCards = [];
+    const totalCards = 100;
+    
+    // 비율을 4:3에 근접하게 세팅 (줌인 핏 일치를 위해)
+    const axisDx = 6;
+    const axisDy = -4.5;
+
+    function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+    async function initLanding() {
+      await sleep(1000);
+      const landingScreen = document.getElementById("landingScreen");
+      landingScreen.style.opacity = "0";
+      await sleep(600);
+      landingScreen.style.display = "none";
+
+      const W = window.innerWidth;
+      const H = window.innerHeight;
+      const midX = W / 2;
+      const midY = H / 2;
+
+      const cascadeDelay = 12; 
+
+      for(let i=0; i<totalCards; i++){
+        const el = document.createElement("div");
+        el.className = "anim-card";
+
+        const dist = i - 49; 
+        const tx = midX + dist * axisDx;
+        const ty = midY + dist * axisDy;
+
+        el.style.left = tx + "px";
+        el.style.top = ty + "px";
+        el.style.zIndex = String(totalCards - i + 10);
+        el.style.opacity = "0";
+        el.style.transform = "translate(-36px, 26px) scale(0.88)";
+        
+        animCanvas.appendChild(el);
+        animCards.push({el, idx: i, tx, ty});
+      }
+
+      animCards.forEach((c, i) => {
+        setTimeout(() => {
+          c.el.style.transition = "opacity .2s ease, transform .3s ease";
+          c.el.style.opacity = "1";
+          c.el.style.transform = "translate(0,0) scale(1)";
+        }, i * cascadeDelay);
+      });
+
+      await sleep(totalCards * cascadeDelay + 400);
+
+      document.getElementById("whiteOverlay").style.opacity = "1";
+      topControls.classList.add("visible");
+    }
+
+    async function startSequence() {
+      if(state.entering) return;
+      state.entering = true;
+
+      state.filteredProjects = projects.filter(p => 
+        p.category.includes(config.categories[state.category]) &&
+        p.product.includes(config.products[state.product])
+      );
+      if (!state.filteredProjects.length) state.filteredProjects = projects.slice();
+      
+      state.currentIndex = Math.min(4, state.filteredProjects.length - 1);
+
+      applyBtn.style.opacity = "0";
+      setTimeout(() => applyBtn.style.display = "none", 300);
+
+      document.querySelectorAll('.picker-label').forEach(el=>el.style.display='none');
+      topControls.classList.add("compact");
+      window.dispatchEvent(new Event("updatePickers"));
+
+      document.getElementById("whiteOverlay").style.opacity = "0";
+
+      const W = window.innerWidth;
+      const H = window.innerHeight;
+      const midX = W / 2;
+      const midY = H / 2;
+
+      animCards.forEach((c) => {
+        c.el.style.transition = "left 1.2s var(--ease), top 1.2s var(--ease)";
+        const dist = c.idx - 49; 
+        let newTx = midX + dist * axisDx;
+        let newTy = midY + dist * axisDy;
+
+        // 3. 앞쪽 덱 밀려나는 거리를 확 줄이고 4:3 비율 유지 (연결감 강화)
+        if (dist < 0) {
+          newTx -= 65; 
+          newTy += 48.75; 
+        }
+
+        c.el.style.left = newTx + "px";
+        c.el.style.top = newTy + "px";
+      });
+
+      await sleep(1000);
+
+      const targetWidth = Math.min(640, window.innerWidth * 0.7);
+      const scaleFactor = targetWidth / 100;
+      
+      animCanvas.style.transition = "transform 1.3s cubic-bezier(0.7, 0, 0.3, 1)";
+      animCanvas.style.transformOrigin = "50% 50%";
+      animCanvas.style.transform = `scale(${scaleFactor})`;
+
+      await sleep(1300);
+      
+      animCanvas.style.display="none";
+      deckStage.classList.add("active");
+      
+      renderDeck();
+      deck.style.opacity = "1";
+      deck.classList.add("visible");
+      placeStack();
+      
+      hintEl.classList.add("visible");
+      counterEl.classList.add("visible");
+
+      state.initialized=true;
+      state.entering=false;
+      updateNav();
+    }
+
+    async function resetToSpread() {
+      if(state.entering || !state.initialized) return;
+      state.entering = true;
+
+      deckStage.classList.remove("active");
+      deck.classList.remove("visible");
+
+      animCanvas.style.display = "block";
+      animCanvas.style.opacity = "1";
+      
+      void animCanvas.offsetWidth;
+
+      animCanvas.style.transition = "transform 1.3s cubic-bezier(0.7, 0, 0.3, 1)";
+      animCanvas.style.transform = "scale(1)";
+
+      const W = window.innerWidth;
+      const H = window.innerHeight;
+      const midX = W / 2;
+      const midY = H / 2;
+
+      animCards.forEach((c) => {
+        c.el.style.transition = "left 1.2s var(--ease), top 1.2s var(--ease)";
+        const dist = c.idx - 49; 
+        c.el.style.left = (midX + dist * axisDx) + "px";
+        c.el.style.top = (midY + dist * axisDy) + "px";
+      });
+
+      topControls.classList.remove("compact");
+      document.querySelectorAll('.picker-label').forEach(el => el.style.display = 'block');
+      applyBtn.style.display = "inline-flex";
+      setTimeout(() => applyBtn.style.opacity = "1", 100);
+      
+      document.getElementById("whiteOverlay").style.opacity = "1";
+      
+      window.dispatchEvent(new Event("updatePickers"));
+
+      await sleep(1300);
+      state.initialized = false;
+      state.entering = false;
+    }
+
+    deckStage.addEventListener('click', (e) => {
+      if (e.target === deckStage || e.target === deck) {
+        resetToSpread();
+      }
+    });
+
+    function createPicker(rootId, items, stateKey){
+      const root = document.getElementById(rootId);
+      const track = root.querySelector(".picker-track");
+      const itemH = 42;
+      let startY=0, dragging=false;
+
+      const rendered = items.map(text=>{
+        const el=document.createElement("div");
+        el.className="picker-item"; el.textContent=text;
+        track.appendChild(el); return el;
+      });
+
+      const clamp=i=>Math.max(0,Math.min(items.length-1,i));
+
+      function draw(){
+        const isCompact = topControls.classList.contains("compact");
+        const cY=root.clientHeight/2;
+        const sel=state[stateKey];
+        
+        rendered.forEach((el,idx)=>{
+          const rel=idx-sel;
+          const y=cY+rel*itemH;
+          const d=Math.abs(rel);
+          
+          if (isCompact) {
+            el.style.top = "50%";
+            el.style.transform = "translateY(-50%)";
+            el.style.opacity = d === 0 ? 1 : 0;
+            el.style.filter = "none";
+          } else {
+            el.style.top=y+"px";
+            el.style.transform="translateY(-50%) scale("+Math.max(0.78,1-d*0.08)+")";
+            el.style.opacity=Math.max(0.15,1-d*0.35);
+            el.style.filter="blur("+Math.max(0,d-1)*0.8+"px)";
+          }
+          el.style.fontWeight=d===0?"600":"400";
+          el.style.color=d===0?"#2f2f2f":"#9a9a9a";
+        });
+      }
+
+      track.addEventListener("wheel",e=>{
+        if(topControls.classList.contains("compact")) return;
+        e.preventDefault(); e.stopPropagation();
+        state[stateKey]=clamp(state[stateKey]+(e.deltaY>0?1:-1));
+        draw();
+      },{passive:false});
+
+      track.addEventListener("mousedown",e=>{
+        if(topControls.classList.contains("compact")) return;
+        dragging=true;startY=e.clientY;
+      });
+      window.addEventListener("mousemove",e=>{
+        if(!dragging) return;
+        const d=e.clientY-startY;
+        if(Math.abs(d)>=itemH*0.55){
+          state[stateKey]=clamp(state[stateKey]-Math.sign(d));
+          startY=e.clientY; draw();
+        }
+      });
+      window.addEventListener("mouseup",()=>{dragging=false;});
+
+      track.addEventListener("touchstart",e=>{
+        if(topControls.classList.contains("compact")) return;
+        dragging=true;startY=e.touches[0].clientY;
+      },{passive:true});
+      track.addEventListener("touchmove",e=>{
+        if(!dragging) return;
+        const d=e.touches[0].clientY-startY;
+        if(Math.abs(d)>=itemH*0.55){
+          state[stateKey]=clamp(state[stateKey]-Math.sign(d));
+          startY=e.touches[0].clientY; draw();
+        }
+      },{passive:true});
+      track.addEventListener("touchend",()=>{dragging=false;},{passive:true});
+
+      draw();
+      new ResizeObserver(()=>draw()).observe(root);
+      window.addEventListener("updatePickers", draw);
+    }
+
+    function getVisiblePages(proj){
+      const m=config.viewModes[state.viewMode];
+      if(m==="Lite") return proj.pages.slice(0,2);
+      if(m==="Standard") return proj.pages.slice(0,3);
+      return proj.pages;
+    }
+
+    function buildCard(proj, idx){
+      const card=document.createElement("article");
+      card.className="card";
+      card.dataset.index=idx;
+
+      const content=document.createElement("div");
+      content.className="card-content";
+      const inner=document.createElement("div");
+      inner.className="card-inner";
+
+      const meta=document.createElement("div");
+      meta.className="card-meta";
+      meta.innerHTML =
+        '<div><div class="card-title">'+proj.title+'</div>'+
+        '<div class="card-sub">'+proj.category.join(" · ")+'</div></div>'+
+        '<div class="card-sub">'+config.viewModes[state.viewMode]+'</div>';
+      inner.appendChild(meta);
+
+      getVisiblePages(proj).forEach(()=>{
+        const ph=document.createElement("div");
+        ph.className="placeholder";
+        inner.appendChild(ph);
+      });
+
+      content.appendChild(inner);
+      card.appendChild(content);
+      attachScroll(content);
+      return card;
+    }
+
+    function attachScroll(content){
+      let timer=null;
+      function showSB(){
+        content.classList.add("show-scrollbar");
+        clearTimeout(timer);
+        timer=setTimeout(()=>content.classList.remove("show-scrollbar"), 900);
+      }
+      content.addEventListener("wheel",e=>{
+        showSB();
+        const max=content.scrollHeight - content.clientHeight;
+        const atBottom = max - content.scrollTop < 12;
+        if(e.deltaY>0 && atBottom && !state.animating && !state.autoScrollCooldown){
+          e.preventDefault();
+          state.autoScrollCooldown=true;
+          nextCard();
+          setTimeout(()=>{state.autoScrollCooldown=false;}, 800);
+        }
+      },{passive:false});
+      content.addEventListener("scroll",showSB,{passive:true});
+    }
+
+    function renderDeck(){
+      deck.innerHTML="";
+      state.filteredProjects.forEach((proj,i)=>{
+        deck.appendChild(buildCard(proj,i));
+      });
+    }
+
+    function placeStack(){
+      const deckW = deck.clientWidth;
+      const cards=deck.querySelectorAll(".card");
+      
+      const gapX = deckW * 0.06; 
+      const gapY = deckW * -0.045; 
+
+      cards.forEach((card,i)=>{
+        const rel=i - state.currentIndex;
+        let x=0, y=0, sc=1, op=1, z=100;
+
+        const content = card.querySelector('.card-content');
+
+        if(rel >= 0 && rel < visibleCount){
+          x = rel * gapX;
+          y = rel * gapY;
+          sc = 1 - rel * 0.012; 
+          op = 1; 
+          z = 220 - rel;
+          card.style.pointerEvents = rel===0 ? "auto" : "none";
+          if(content) content.style.display="block";
+        } 
+        else if(rel < 0){
+          const d = Math.abs(rel);
+          if (d <= 4) {
+            // 2 & 4. 넘어간 덱을 메인 덱과 완전히 분리하여 더 왼쪽 아래로 이동
+            // 최근 덱(d=1)은 4장 중 가장 오른쪽 위 위치(Z-index 낮음)
+            // 오래된 덱(d=4)은 4장 중 가장 왼쪽 아래 위치(Z-index 높음)
+            const baseX = -(deckW * 0.65);
+            const baseY =  (deckW * 0.72);
+            const stepX = -(deckW * 0.03);
+            const stepY =  (deckW * 0.0225);
+
+            x = baseX + (d - 1) * stepX;
+            y = baseY + (d - 1) * stepY;
+            sc = 1;
+            op = 1;
+            z = 300 + d; 
+            card.style.pointerEvents = "none";
+            if(content) content.style.display="none";
+          } else {
+            // 5장째부터는 안 보이게 스르륵
+            x = -(deckW * 0.85);
+            y =  (deckW * 0.65);
+            sc = 0.8;
+            op = 0;
+            z = 300;
+            card.style.pointerEvents = "none";
+            if(content) content.style.display="none";
+          }
+        } 
+        else {
+          x = 400;
+          y = -400;
+          sc = 0.9;
+          op = 0;
+          z = 220 - rel;
+          card.style.pointerEvents = "none";
+          if(content) content.style.display="none";
+        }
+
+        card.style.zIndex=String(z);
+        card.style.opacity=String(op);
+        card.style.filter="none";
+        card.style.transform=`translate(${x}px,${y}px) scale(${sc})`;
+      });
+      updateNav();
+      updateCounter();
+    }
+
+    function updateNav(){
+      prevBtn.classList.toggle("hidden", state.currentIndex<=0);
+      nextBtn.classList.toggle("hidden", state.currentIndex>=state.filteredProjects.length-1);
+    }
+    function updateCounter(){
+      counterEl.textContent=(state.currentIndex+1)+" / "+state.filteredProjects.length;
+    }
+
+    function nextCard(){
+      if(state.animating || state.entering) return;
+      if(state.currentIndex >= state.filteredProjects.length-1) return;
+      state.animating=true;
+      state.currentIndex++;
+      placeStack();
+      setTimeout(()=>{ state.animating=false; }, 1000);
+    }
+
+    function prevCard(){
+      if(state.animating || state.entering) return;
+      if(state.currentIndex <= 0) return;
+      state.animating=true;
+      state.currentIndex--;
+      placeStack();
+      setTimeout(()=>{ state.animating=false; }, 1000);
+    }
+
+    applyBtn.addEventListener("click", startSequence);
+
+    [prevBtn, nextBtn].forEach(btn=>{
+      btn.addEventListener("mousedown",()=>{
+        btn.style.transform="translateY(calc(-50% + 2px)) scale(0.95)";
+        btn.style.boxShadow="0 6px 16px rgba(0,0,0,0.10)";
+      });
+      btn.addEventListener("mouseup",()=>{
+        btn.style.transform="translateY(-50%)"; btn.style.boxShadow="";
+      });
+      btn.addEventListener("mouseleave",()=>{
+        btn.style.transform="translateY(-50%)"; btn.style.boxShadow="";
+      });
+    });
+
+    prevBtn.addEventListener("click", prevCard);
+    nextBtn.addEventListener("click", nextCard);
+
+    document.addEventListener("keydown",e=>{
+      if(!state.initialized) return;
+      if(e.key==="ArrowRight"||e.key==="ArrowDown") nextCard();
+      if(e.key==="ArrowLeft" ||e.key==="ArrowUp")   prevCard();
+    });
+
+    createPicker("pickerCategory", config.categories, "category");
+    createPicker("pickerProduct",  config.products,   "product");
+    createPicker("pickerViewMode", config.viewModes,  "viewMode");
+
+    window.addEventListener("DOMContentLoaded", initLanding);
+  </script>
+</body>
+</html>
